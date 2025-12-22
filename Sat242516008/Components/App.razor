@@ -1,0 +1,102 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="stylesheet" href="bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="Sat242516008.styles.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <HeadOutlet @rendermode="InteractiveServer" />
+</head>
+
+<body>
+    <Routes @rendermode="InteractiveServer" />
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="_framework/blazor.web.js"></script>
+
+    @* --- GRAFİK SCRİPTİ --- *@
+    <script>
+        window.renderProductChart = (labels, data) => {
+            var canvas = document.getElementById('productChart');
+            if (!canvas) return;
+
+            var ctx = canvas.getContext('2d');
+
+            if (window.myChart instanceof Chart) {
+                window.myChart.destroy();
+            }
+
+            window.myChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Kategorideki Ürün Sayısı',
+                        data: data,
+                        backgroundColor: 'rgba(13, 110, 253, 0.5)',
+                        borderColor: 'rgba(13, 110, 253, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 500 },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { stepSize: 1 }
+                        }
+                    }
+                }
+            });
+        };
+    </script>
+
+    @* --- DİL DEĞİŞTİRME SCRİPTİ --- *@
+    <script>
+        window.blazorCulture = {
+            set: (value) => {
+                const date = new Date();
+                date.setTime(date.getTime() + (365 * 24 * 60 * 60 * 1000));
+                const expires = "expires=" + date.toUTCString();
+                document.cookie = `.AspNetCore.Culture=c=${value}|uic=${value};${expires};path=/`;
+                window.location.reload();
+            }
+        };
+    </script>
+
+    @* --- MADDE 23: DOSYA İNDİRME (EXCEL & PDF) SCRİPTLERİ --- *@
+    <script>
+        // Metin tabanlı dosyalar için (CSV/Excel)
+        window.downloadFile = (fileName, content) => {
+            const BOM = '\uFEFF';
+            const blob = new Blob([BOM + content], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", fileName);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        // Binary tabanlı dosyalar için (QuestPDF)
+        window.downloadFileFromBytes = (fileName, byteBase64) => {
+            const link = document.createElement('a');
+            link.download = fileName;
+            link.href = "data:application/pdf;base64," + byteBase64;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+    </script>
+</body>
+
+</html>

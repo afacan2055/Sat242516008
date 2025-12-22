@@ -1,0 +1,149 @@
+﻿@page "/quality-control"
+@rendermode InteractiveServer
+@using Sat242516008.Models.MyDbModels
+@using MyDbModels
+@using Providers
+@inject IMyDbModel_Provider Provider
+@inject IJSRuntime JS
+
+<div class="container mt-4">
+    <h3 class="fw-bold text-dark border-bottom pb-2">Ölçüm Girişi ve Analiz</h3>
+
+    <div class="row mt-4">
+        @* --- GİRİŞ FORMU --- *@
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-dark text-white fw-bold">Yeni Ölçüm Kaydı</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Ürün Seçin</label>
+                        <select class="form-select" @bind="NewEntry.ProductId">
+                            <option value="0">Seçiniz...</option>
+                            @foreach (var p in ProductList)
+                            {
+                                <option value="@p.Id">@p.ProductName</option>
+                            }
+                        </select>
+                    </div>
+                    <input type="number" step="0.01" class="form-control"
+                           @bind="NewEntry.TargetValue"
+                           @bind:event="oninput"
+                           @bind:after="CalculateStatus" />
+                    <input type="number" step="0.01" class="form-control"
+                           @bind="NewEntry.Tolerance"
+                           @bind:event="oninput"
+                           @bind:after="CalculateStatus" />
+
+                    <input type="number" step="0.01" class="form-control"
+                           @bind="NewEntry.MeasuredValue"
+                           @bind:event="oninput"
+                           @bind:after="CalculateStatus" />
+
+                    <div class="alert @(NewEntry.Status == "KABUL" ? "alert-success" : "alert-danger") fw-bold text-center">
+                        SONUÇ: @(string.IsNullOrEmpty(NewEntry.Status) ? "Bekleniyor..." : NewEntry.Status)
+                    </div>
+
+                    <button class="btn btn-primary w-100 fw-bold" @onclick="SaveMeasurement">KAYDET</button>
+                </div>
+            </div>
+        </div>
+
+        @* --- LİSTELEME --- *@
+        <div class="col-md-8">
+            <div class="table-responsive">
+                <table class="table table-striped align-middle shadow-sm">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Ürün</th>
+                            <th>Hedef</th>
+                            <th>Ölçülen</th>
+                            <th>Fark</th>
+                            <th>Durum</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (MeasurementList != null && MeasurementList.Any())
+                        {
+                            @foreach (var m in MeasurementList)
+                            {
+                                <tr>
+                                    <td>@m.ProductName</td>
+                                    <td>@m.TargetValue</td>
+                                    <td>@m.MeasuredValue</td>
+                                    <td>@(Math.Abs(m.MeasuredValue - m.TargetValue))</td>
+                                    <td>
+                                        <span class="badge @(m.Status == "KABUL" ? "bg-success" : "bg-danger")">@m.Status</span>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private Measurement NewEntry = new Measurement() { TargetValue = 10, Tolerance = 0.5m };
+    private List<Product> ProductList = new();
+    private List<Measurement> MeasurementList = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var prodResult = await Provider.Execute<Product>(new MyDbModel<Product>(), "sp_GetProducts", isPagination: false);
+            ProductList = prodResult?.Items?.ToList() ?? new();
+            await LoadMeasurements();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    private async Task LoadMeasurements()
+    {
+        var res = await Provider.Execute<Measurement>(new MyDbModel<Measurement>(), "sp_GetMeasurements", isPagination: false);
+        MeasurementList = res?.Items?.ToList() ?? new();
+        StateHasChanged();
+    }
+
+    private void CalculateStatus()
+    {
+        if (NewEntry.TargetValue == 0 || NewEntry.Tolerance == 0 || NewEntry.MeasuredValue == 0)
+        {
+            NewEntry.Status = "";
+            return;
+        }
+
+        decimal diff = Math.Abs(NewEntry.MeasuredValue - NewEntry.TargetValue);
+        NewEntry.Status = diff <= NewEntry.Tolerance ? "KABUL" : "RED";
+        
+        StateHasChanged();
+    }
+
+    private async Task SaveMeasurement()
+    {
+        if (NewEntry.ProductId == 0) 
+        {
+            await JS.InvokeVoidAsync("alert", "Lütfen ürün seçiniz!");
+            return;
+        }
+
+        var parameters = new (string Key, object Value)[] {
+            ("ProductId", NewEntry.ProductId),
+            ("MeasuredValue", NewEntry.MeasuredValue),
+            ("TargetValue", NewEntry.TargetValue),
+            ("Tolerance", NewEntry.Tolerance),
+            ("Status", NewEntry.Status),
+            ("CreatedBy", "Sistem")
+        };
+
+        await Provider.SetItems<Measurement>("sp_SetMeasurement", parameters);
+
+        NewEntry = new Measurement() { TargetValue = 10, Tolerance = 0.5m };
+        await LoadMeasurements();
+    }
+}

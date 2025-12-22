@@ -1,0 +1,90 @@
+﻿@page "/quality-report"
+@using MyDbModels
+@using Providers
+@rendermode InteractiveServer
+@inject IMyDbModel_Provider Provider
+
+<PageTitle>Kalite Analiz Raporu</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3><i class="bi bi-bar-chart-line-fill text-danger me-2"></i>Kalite Analiz ve Fire Raporu</h3>
+        <button class="btn btn-outline-primary btn-sm" @onclick="LoadStats">
+            <i class="bi bi-arrow-clockwise"></i> Verileri Güncelle
+        </button>
+    </div>
+
+    <div class="row">
+        @if (StatsList == null || !StatsList.Any())
+        {
+            <div class="col-12 text-center p-5">
+                <div class="spinner-grow text-danger" role="status"></div>
+                <p>İstatistikler hesaplanıyor...</p>
+            </div>
+        }
+        else
+        {
+            @foreach (var stat in StatsList)
+            {
+                // Değerleri ayırıyoruz: "ToplamÖlçüm|HataSayısı"
+                var parts = stat.Value.Split('|');
+                var total = double.Parse(parts[0]);
+                var errors = double.Parse(parts[1]);
+                var errorRate = total > 0 ? (errors / total) * 100 : 0;
+                var successRate = 100 - errorRate;
+
+                <div class="col-md-6 mb-4">
+                    <div class="card shadow-sm border-0 h-100">
+                        <div class="card-body">
+                            <h5 class="card-title text-secondary">@stat.Key</h5>
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="small fw-bold">Başarı Oranı: %@successRate.ToString("N1")</span>
+                                <span class="small text-danger">Hata: @errors / @total</span>
+                            </div>
+                            <div class="progress" style="height: 25px;">
+                                <div class="progress-bar bg-success" role="progressbar"
+                                     style="width: @successRate%" aria-valuenow="@successRate"
+                                     aria-valuemin="0" aria-valuemax="100">
+                                    Uygun
+                                </div>
+                                <div class="progress-bar bg-danger" role="progressbar"
+                                     style="width: @errorRate%" aria-valuenow="@errorRate"
+                                     aria-valuemin="0" aria-valuemax="100">
+                                    Hatalı
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    @* Özet Bilgi Kartları *@
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="alert alert-info border-0 shadow-sm d-flex align-items-center">
+                <i class="bi bi-info-circle-fill fs-4 me-3"></i>
+                <div>
+                    <strong>Sistem Notu:</strong> Yukarıdaki grafikler, yapılan son 1000 ölçümün gerçek zamanlı fire analizini göstermektedir.
+                    Kırmızı alanlar ürünlerin tolerans dışı kaldığı ölçümleri temsil eder.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private IEnumerable<MyDbModel_Result_KeyValue<string, string>> StatsList { get; set; } = new List<MyDbModel_Result_KeyValue<string, string>>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStats();
+    }
+
+    private async Task LoadStats()
+    {
+        // SQL'den istatistikleri çekiyoruz
+        StatsList = await Provider.GetItems<MyDbModel_Result_KeyValue<string, string>>("sp_GetQualityStats");
+    }
+}

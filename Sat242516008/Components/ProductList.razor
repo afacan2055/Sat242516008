@@ -1,0 +1,297 @@
+﻿@page "/products"
+@rendermode InteractiveServer
+@using MyDbModels
+@using Providers
+@using Microsoft.Extensions.Localization
+@inject IMyDbModel_Provider Provider
+@inject IStringLocalizer<App> L
+@inject IJSRuntime JS
+@inject Services.ReportService ReportService
+
+<PageTitle>@L["PageTitle"]</PageTitle>
+
+<div class="container mt-4">
+    @* --- GRAFİK BÖLÜMÜ --- *@
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-body" style="height: 250px;">
+            <canvas id="productChart"></canvas>
+        </div>
+    </div>
+
+    @* --- ÜRÜN YÖNETİM BAŞLIĞI --- *@
+    <div class="d-flex justify-content-between align-items-center mb-4 bg-light p-3 rounded shadow-sm border-start border-primary border-4">
+        <h3 class="mb-0 text-primary fw-bold"><i class="bi bi-box-seam me-2"></i>@L["ProductList"]</h3>
+
+        <div>
+            @* --- PDF RAPOR BUTONU (QuestPDF) --- *@
+            <button class="btn btn-outline-danger shadow-sm me-2" @onclick="DownloadPdf">
+                <i class="bi bi-file-earmark-pdf me-1"></i> @L["ExportPdf"]
+            </button>
+
+            @* --- EXCEL BUTONU --- *@
+            <button class="btn btn-outline-success shadow-sm me-2" @onclick="ExportToExcel">
+                <i class="bi bi-file-earmark-excel me-1"></i> @L["ExportExcel"]
+            </button>
+
+            <button class="btn btn-success shadow-sm" @onclick="() => OpenModal()">
+                <i class="bi bi-plus-lg me-1"></i> @L["AddNewProduct"]
+            </button>
+        </div>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="text-center p-5">
+            <div class="spinner-grow text-primary" role="status"></div>
+            <p class="mt-2 fw-bold text-secondary">@L["Loading"]</p>
+        </div>
+    }
+    else
+    {
+        <div class="card shadow-sm border-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>@L["ProductCode"]</th>
+                            <th>@L["ProductName"]</th>
+                            <th>@L["Category"]</th>
+                            <th>@L["CreatedDate"]</th>
+                            <th class="text-center">@L["Actions"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (ResultModel?.Items != null && ResultModel.Items.Any())
+                        {
+                            @foreach (var item in ResultModel.Items)
+                            {
+                                <tr>
+                                    <td><span class="badge bg-secondary px-2 py-2">@item.ProductCode</span></td>
+                                    <td><span class="fw-bold text-dark">@item.ProductName</span></td>
+                                    <td>
+                                        <span class="badge bg-info text-dark">
+                                            @GetCategoryName(item.CategoryId)
+                                        </span>
+                                    </td>
+                                    <td class="text-muted small">@item.CreatedDate.ToString("dd.MM.yyyy HH:mm")</td>
+                                    <td class="text-center">
+                                        <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => OpenModal(item)">
+                                            <i class="bi bi-pencil-fill"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteData(item.Id)">
+                                            <i class="bi bi-trash-fill"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="5" class="text-center p-4 text-muted">@L["NoDataFound"]</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@* --- MODAL BÖLÜMÜ --- *@
+@if (showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">@(CurrentProduct.Id == 0 ? L["AddNewProduct"] : L["EditProduct"])</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">@L["ProductCode"]</label>
+                        <input type="text" class="form-control" @bind="CurrentProduct.ProductCode" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">@L["ProductName"]</label>
+                        <input type="text" class="form-control" @bind="CurrentProduct.ProductName" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">@L["Category"]</label>
+                        <select class="form-select" @bind="CurrentProduct.CategoryId">
+                            <option value="0">@L["SelectCategory"]</option>
+                            @foreach (var cat in CategoryList)
+                            {
+                                <option value="@cat.Id">@cat.CategoryName</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">@L["Cancel"]</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveData">@L["Save"]</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private IMyDbModel<Product> ResultModel { get; set; } = new MyDbModel<Product>();
+    private List<Category> CategoryList { get; set; } = new();
+    private Product CurrentProduct { get; set; } = new();
+    private bool showModal = false;
+    private bool IsLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await InitialLoad();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!IsLoading)
+        {
+            await UpdateChart();
+        }
+    }
+
+    private async Task InitialLoad()
+    {
+        try
+        {
+            IsLoading = true;
+            var catResult = await Provider.Execute<Category>(new MyDbModel<Category>(), "sp_GetCategories", isPagination: false);
+            CategoryList = catResult?.Items?.ToList() ?? new List<Category>();
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("console.error", "Yükleme Hatası: " + ex.Message);
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadData()
+    {
+        ResultModel = await Provider.Execute(ResultModel, "sp_GetProducts", isPagination: true);
+        StateHasChanged();
+    }
+
+    // --- MADDE 23: PDF RAPORLAMA (QuestPDF) ---
+    private async Task DownloadPdf()
+    {
+        if (ResultModel?.Items == null || !ResultModel.Items.Any()) return;
+
+        try
+        {
+            // Servisten PDF byte dizisini alıyoruz
+            var pdfBytes = ReportService.GenerateProductReport(ResultModel.Items.ToList(), L["ProductList"]);
+            var fileName = $"Products_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
+
+            // Base64'e çevirip JS üzerinden indirtiyoruz
+            await JS.InvokeVoidAsync("downloadFileFromBytes", fileName, Convert.ToBase64String(pdfBytes));
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("console.error", "PDF Hatası: " + ex.Message);
+        }
+    }
+
+    // --- EXCEL AKTARMA ---
+    private async Task ExportToExcel()
+    {
+        if (ResultModel?.Items == null || !ResultModel.Items.Any()) return;
+
+        var csv = $"{L["ProductCode"]};{L["ProductName"]};{L["Category"]};{L["CreatedDate"]}\n";
+        foreach (var item in ResultModel.Items)
+        {
+            csv += $"{item.ProductCode};{item.ProductName};{GetCategoryName(item.CategoryId)};{item.CreatedDate}\n";
+        }
+
+        var fileName = $"Products_{DateTime.Now:yyyyMMdd_HHmm}.csv";
+        await JS.InvokeVoidAsync("downloadFile", fileName, csv);
+    }
+
+    private string GetCategoryName(int categoryId) =>
+        CategoryList?.FirstOrDefault(c => c.Id == categoryId)?.CategoryName ?? L["NoCategory"];
+
+    private void OpenModal(Product? model = null)
+    {
+        if (model != null)
+        {
+            CurrentProduct = new Product
+            {
+                Id = model.Id,
+                CategoryId = model.CategoryId,
+                ProductCode = model.ProductCode,
+                ProductName = model.ProductName
+            };
+        }
+        else
+        {
+            CurrentProduct = new Product { Id = 0, CategoryId = 0, ProductCode = "", ProductName = "" };
+        }
+        showModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        StateHasChanged();
+    }
+
+    private async Task SaveData()
+    {
+        try
+        {
+            var parameters = new (string Key, object Value)[] {
+                ("Id", CurrentProduct.Id),
+                ("CategoryId", CurrentProduct.CategoryId),
+                ("ProductCode", CurrentProduct.ProductCode),
+                ("ProductName", CurrentProduct.ProductName ?? "")
+            };
+            await Provider.SetItems<Product>("sp_SetProduct", parameters);
+            showModal = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("console.error", "SQL Hatası: " + ex.Message);
+        }
+    }
+
+    private async Task DeleteData(int id)
+    {
+        try
+        {
+            var parameters = new (string Key, object Value)[] { ("Id", id) };
+            await Provider.SetItems<Product>("sp_DeleteProduct", parameters);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("console.error", "Silme Hatası: " + ex.Message);
+        }
+    }
+
+    private async Task UpdateChart()
+    {
+        try
+        {
+            if (CategoryList.Any() && ResultModel?.Items != null)
+            {
+                var labels = CategoryList.Select(c => c.CategoryName).ToArray();
+                var data = CategoryList.Select(c => ResultModel.Items.Count(p => p.CategoryId == c.Id)).ToArray();
+                await JS.InvokeVoidAsync("renderProductChart", labels, data);
+            }
+        }
+        catch { }
+    }
+}

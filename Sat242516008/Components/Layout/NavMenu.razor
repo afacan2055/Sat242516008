@@ -1,0 +1,106 @@
+﻿@implements IDisposable
+@inject NavigationManager NavigationManager
+@inject Services.AuthService AuthService
+@using Microsoft.Extensions.Localization
+@inject IStringLocalizer<App> L
+@inject IJSRuntime JS
+
+<div class="top-row ps-3 navbar navbar-dark bg-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">
+            <i class="bi bi-shield-check me-2"></i>@L["AppName"]
+        </a>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="flex-column">
+
+        @* --- DİL DEĞİŞTİRME BUTONLARI --- *@
+        <div class="nav-item px-3 mb-2 mt-2">
+            <div class="d-flex justify-content-center bg-secondary bg-opacity-25 rounded p-2">
+                <button class="btn btn-sm btn-outline-light me-2 w-100" @onclick='() => ChangeCulture("tr-TR")'>TR</button>
+                <button class="btn btn-sm btn-outline-light w-100" @onclick='() => ChangeCulture("en-US")'>EN</button>
+            </div>
+        </div>
+
+        @* --- ANA SAYFA --- *@
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <span class="bi bi-house-door-fill" aria-hidden="true"></span> @L["Home"]
+            </NavLink>
+        </div>
+
+        @* --- GİRİŞ SAYFASI (Geri Eklendi) --- *@
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="login">
+                <span class="bi bi-person-badge-fill" aria-hidden="true"></span> @L["Login"]
+            </NavLink>
+        </div>
+
+        @* --- ÜRÜN YÖNETİMİ --- *@
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="products">
+                <span class="bi bi-box-seam-fill" aria-hidden="true"></span> @L["ProductManagement"]
+            </NavLink>
+        </div>
+
+        @* --- KALİTE KONTROL --- *@
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="quality-control">
+                <span class="bi bi-clipboard-check-fill" aria-hidden="true"></span> @L["QualityControl"]
+            </NavLink>
+        </div>
+
+        @* --- ANALİZ RAPORU --- *@
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="quality-report">
+                <span class="bi bi-bar-chart-line-fill" aria-hidden="true"></span> @L["AnalysisReport"]
+            </NavLink>
+        </div>
+
+        @* --- ÇIKIŞ YAP --- *@
+        <div class="nav-item px-3 mt-4">
+            <button class="nav-link btn btn-link text-danger w-100 text-start border-0" @onclick="Logout">
+                <span class="bi bi-box-arrow-left" aria-hidden="true"></span> @L["Logout"]
+            </button>
+        </div>
+
+    </nav>
+</div>
+
+@code {
+    private string? currentUrl;
+
+    protected override void OnInitialized()
+    {
+        currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private async Task ChangeCulture(string culture)
+    {
+        var cookieValue = $".AspNetCore.Culture=c={culture}|uic={culture}";
+        await JS.InvokeVoidAsync("eval", $"document.cookie='{cookieValue};path=/;max-age=31536000'");
+        NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
+    }
+
+    private void Logout()
+    {
+        AuthService.Logout();
+        NavigationManager.NavigateTo("login", forceLoad: true);
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}
