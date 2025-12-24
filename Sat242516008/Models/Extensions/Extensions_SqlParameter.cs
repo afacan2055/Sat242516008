@@ -44,7 +44,6 @@ public static class Extensions_SqlParameter
             row[1] = item.Value;
             dt.Rows.Add(row);
         }
-
         return new SqlParameter()
         {
             SqlDbType = sqlDbType,
