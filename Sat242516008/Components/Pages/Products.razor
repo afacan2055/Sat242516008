@@ -1,0 +1,301 @@
+﻿@page "/products"
+
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Admin")]
+
+@using Sat242516008.Models
+@using MyDbModels
+@using Providers
+@using Loggers
+@inject IMyDbModel_Provider Provider
+@inject DbLogger DbLogger
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+@attribute [Authorize]
+
+<div class="container-fluid">
+    <h3 class="mt-3">Ürün Yönetimi</h3>
+    <hr />
+
+    <div class="row mb-3">
+        <div class="col-md-5">
+            <div class="input-group">
+                <span class="input-group-text bg-light">Filtrele</span>
+                <input type="text" class="form-control"
+                       placeholder="Ürün Adı veya Kodu..."
+                       @bind="searchTerm"
+                       @bind:event="oninput"
+                       @onkeypress="HandleEnterKey" />
+                <button class="btn btn-primary" @onclick="SearchData">
+                    Ara
+                </button>
+            </div>
+        </div>
+        <div class="col-md-7 text-end">
+            <button class="btn btn-success" @onclick="OpenCreateModal">
+                + Yeni Ürün Ekle
+            </button>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <table class="table table-striped table-hover mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th style="cursor:pointer" @onclick='() => SortData("ProductID")'>ID ⇅</th>
+                        <th style="cursor:pointer" @onclick='() => SortData("ProductName")'>Ürün Adı ⇅</th>
+                        <th style="cursor:pointer" @onclick='() => SortData("ProductCode")'>Kod ⇅</th>
+                        <th style="cursor:pointer" @onclick='() => SortData("Category")'>Kategori ⇅</th>
+                        <th>Durum</th>
+                        <th style="width: 180px;">İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (model.Items != null && model.Items.Any())
+                    {
+                        @foreach (var item in model.Items)
+                        {
+                            <tr>
+                                <td>@item.ProductID</td>
+                                <td>@item.ProductName</td>
+                                <td>@item.ProductCode</td>
+                                <td>@item.Category</td>
+                                <td>
+                                    @if (item.IsActive)
+                                    {
+                                        <span class="badge bg-success">Aktif</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Pasif</span>
+                                    }
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-warning me-1" @onclick="() => OpenEditModal(item)">
+                                        Düzenle
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" @onclick="() => DeleteItem(item)">
+                                        Sil
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="6" class="text-center py-3">
+                                <em>Kayıt bulunamadı veya yükleniyor...</em>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @if (model.Parameters.TotalPageCount > 1)
+    {
+        <div class="d-flex justify-content-center mt-3">
+            <nav>
+                <ul class="pagination">
+                    <li class="page-item @(model.Parameters.PageNumber <= 1 ? "disabled" : "")">
+                        <button class="page-link" @onclick="PrevPage">Önceki</button>
+                    </li>
+                    <li class="page-item disabled">
+                        <span class="page-link">
+                            Sayfa @model.Parameters.PageNumber / @model.Parameters.TotalPageCount
+                            (Top: @model.Parameters.TotalRecordCount)
+                        </span>
+                    </li>
+                    <li class="page-item @(model.Parameters.PageNumber >= model.Parameters.TotalPageCount ? "disabled" : "")">
+                        <button class="page-link" @onclick="NextPage">Sonraki</button>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    }
+
+    @if (isModalVisible)
+    {
+        <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5);" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title">
+                            @(activeProduct.ProductID > 0 ? "Ürün Güncelle" : "Yeni Ürün Ekle")
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" @onclick="CloseModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Ürün Adı</label>
+                            <input class="form-control" @bind="activeProduct.ProductName" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Ürün Kodu</label>
+                            <input class="form-control" @bind="activeProduct.ProductCode" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Kategori</label>
+                            <input class="form-control" @bind="activeProduct.Category" />
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="activeProduct.IsActive" id="chkStat">
+                            <label class="form-check-label" for="chkStat">Aktif Kayıt</label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseModal">İptal</button>
+                        <button type="button" class="btn btn-primary" @onclick="SaveData">Kaydet</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    // --- DEĞİŞKENLER ---
+    private MyDbModel<Product> model = new MyDbModel<Product>(); // Hocanın model yapısı
+    private Product activeProduct = new Product(); // Formdaki aktif ürün
+    private string searchTerm = ""; // Arama kutusu
+    private bool isModalVisible = false; // Modal açık mı?
+
+    // Sayfa Yüklendiğinde
+    protected override async Task OnInitializedAsync()
+    {
+        // Varsayılan sıralama: En son eklenen en üstte
+        model.Parameters.OrderBy = "ProductID DESC";
+        model.Parameters.PageSize = 5; // Sayfa başı 5 kayıt (isteğe göre değiştir)
+        await LoadData();
+    }
+
+    // --- VERİ YÜKLEME (LİSTELEME) ---
+    private async Task LoadData()
+    {
+        // 1. Filtreleri Temizle ve Varsa Ekle
+        // Hocanın 'Type_Dictionary_String_String' yapısına gidiyor
+        model.Parameters.Where.Clear();
+
+        if (!string.IsNullOrEmpty(searchTerm))
+        {
+            // SQL'deki List prosedürüne 'Search' anahtarı ile gönderiyoruz
+            // Not: SQL SP içinde bu 'Search' anahtarını karşılıyor olmalıyız veya basit select yapıyorsak tüm listeyi çekip C#'ta filtrelemek gerekebilir.
+            // Ancak doğru olan SQL'e parametre gitmektir.
+            model.Parameters.Where.Add("Search", searchTerm);
+        }
+
+        // 2. Provider ile SP Çağır (sp_Products_List)
+        model = (MyDbModel<Product>)await Provider.Execute<Product>(model, "sp_Products_List", isPagination: true);
+    }
+
+    // --- ARAMA ---
+    private async Task SearchData()
+    {
+        model.Parameters.PageNumber = 1; // Aramada 1. sayfaya dön
+        await LoadData();
+    }
+
+    private async Task HandleEnterKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SearchData();
+    }
+
+    // --- SIRALAMA ---
+    private async Task SortData(string columnName)
+    {
+        // Sıralama sütununu değiştirip veriyi tekrar çek
+        model.Parameters.OrderBy = columnName;
+        await LoadData();
+    }
+
+    // --- SAYFALAMA ---
+    private async Task NextPage()
+    {
+        if (model.Parameters.PageNumber < model.Parameters.TotalPageCount)
+        {
+            model.Parameters.PageNumber++;
+            await LoadData();
+        }
+    }
+
+    private async Task PrevPage()
+    {
+        if (model.Parameters.PageNumber > 1)
+        {
+            model.Parameters.PageNumber--;
+            await LoadData();
+        }
+    }
+
+    // --- EKLEME / GÜNCELLEME (MODAL) ---
+    private void OpenCreateModal()
+    {
+        activeProduct = new Product { IsActive = true }; // Temizle
+        isModalVisible = true;
+    }
+
+    private void OpenEditModal(Product item)
+    {
+        // Referansı kopararak kopyala (Yoksa iptal edince tablodaki de değişir)
+        activeProduct = new Product
+        {
+            ProductID = item.ProductID,
+            ProductName = item.ProductName,
+            ProductCode = item.ProductCode,
+            Category = item.Category,
+            IsActive = item.IsActive
+        };
+        isModalVisible = true;
+    }
+
+    private void CloseModal() => isModalVisible = false;
+
+    private async Task SaveData()
+    {
+        if (activeProduct.ProductID == 0)
+        {
+            // EKLEME (INSERT) - Provider'ın params yapısı
+            await Provider.Execute<Product>("sp_Products_Insert",
+                ("ProductName", activeProduct.ProductName),
+                ("ProductCode", activeProduct.ProductCode),
+                ("Category", activeProduct.Category)
+            );
+
+            DbLogger.Log("Products", "Insert", "New", $"Eklendi: {activeProduct.ProductName}");
+        }
+        else
+        {
+            // GÜNCELLEME (UPDATE)
+            await Provider.Execute<Product>("sp_Products_Update",
+                ("ProductID", activeProduct.ProductID),
+                ("ProductName", activeProduct.ProductName),
+                ("ProductCode", activeProduct.ProductCode),
+                ("Category", activeProduct.Category),
+                ("IsActive", activeProduct.IsActive)
+            );
+
+            DbLogger.Log("Products", "Update", activeProduct.ProductID.ToString(), $"Güncellendi: {activeProduct.ProductName}");
+        }
+
+        isModalVisible = false;
+        await LoadData(); // Listeyi yenile
+    }
+
+    // --- SİLME ---
+    private async Task DeleteItem(Product item)
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", $"{item.ProductName} kaydını silmek istediğinize emin misiniz?");
+        if (confirmed)
+        {
+            await Provider.Execute<Product>("sp_Products_Delete",
+                ("ProductID", item.ProductID)
+            );
+
+            DbLogger.Log("Products", "Delete", item.ProductID.ToString(), $"Silindi: {item.ProductName}");
+            await LoadData();
+        }
+    }
+}

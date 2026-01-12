@@ -1,0 +1,95 @@
+﻿
+@page "/"
+@using Sat242516008.Models
+@using MyDbModels
+@using Providers
+@inject IMyDbModel_Provider Provider
+@using Microsoft.AspNetCore.Authorization
+
+@* BU SATIR SAYESİNDE GRAFİKLER ÇALIŞACAK *@
+@rendermode InteractiveServer 
+
+@attribute [Authorize]
+
+
+
+<PageTitle>Ana Sayfa</PageTitle>
+
+<div class="container text-center">
+    <h1 class="display-4">Hoş Geldiniz</h1>
+    <p class="lead">Kalite Kontrol Sistemi Yönetim Paneli</p>
+    <hr />
+
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-dark text-white">
+                    <i class="bi bi-bar-chart-fill"></i> Kategori Bazlı Ürün Dağılımı
+                </div>
+                <div class="card-body">
+                    @if (isLoading)
+                    {
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Yükleniyor...</span>
+                        </div>
+                    }
+                    else if (stats.Count == 0)
+                    {
+                        <div class="alert alert-warning">Grafik için yeterli veri yok. Lütfen ürün ekleyin.</div>
+                    }
+                    else
+                    {
+                        <ApexChart TItem="StatModel"
+                                   Title="Ürün İstatistikleri"
+                                   Options="options">
+
+                            <ApexPointSeries TItem="StatModel"
+                                             Items="stats"
+                                             Name="Ürün Sayısı"
+                                             SeriesType="SeriesType.Bar"
+                                             XValue="@(e => e.Label)"
+                                             YValue="@(e => e.Value)"
+                                             OrderByDescending="e=>e.Y" />
+                        </ApexChart>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<StatModel> stats = new List<StatModel>();
+    private bool isLoading = true;
+    private ApexChartOptions<StatModel> options = new ApexChartOptions<StatModel>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Grafik Ayarları (İsteğe bağlı, renk vs. buradan ayarlanır)
+        options.Theme = new Theme { Mode = Mode.Light, Palette = PaletteType.Palette1 };
+
+        await LoadChartData();
+    }
+
+    private async Task LoadChartData()
+    {
+        try
+        {
+            // Veritabanından veriyi çek (Sayfalama kapalı)
+            var result = (MyDbModel<StatModel>)await Provider.Execute<StatModel>(new MyDbModel<StatModel>(), "sp_GetProductCountsByCategory", isPagination: false);
+
+            if (result.Items != null)
+            {
+                stats = result.Items.ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Veri Çekme Hatası: " + ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

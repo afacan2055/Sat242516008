@@ -1,0 +1,106 @@
+﻿@page "/reports"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Admin")]
+
+@using Sat242516008.Models
+@using MyDbModels
+@using Providers
+@using Sat242516008.Services
+@* İSİM DEĞİŞİKLİĞİ: Değişken adını _reportService yaptık *@
+@inject IMyDbModel_Provider Provider
+@inject ReportService _reportService
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+@attribute [Authorize]
+
+<div class="container-fluid">
+    <h3>Raporlama Modülü</h3>
+    <hr />
+
+    <div class="alert alert-info">
+        Bu alandan Ürün ve Kategori listelerini içeren genel durum raporunu oluşturabilir, önizleyebilir ve indirebilirsiniz.
+    </div>
+
+    <div class="mb-3">
+        <button class="btn btn-primary" @onclick="GenerateReportPreview" disabled="@isLoading">
+            @if (isLoading)
+            {
+                <span>Hazırlanıyor...</span>
+            }
+            else
+            {
+                <span><i class="bi bi-file-earmark-pdf"></i> Raporu Hazırla ve Önizle</span>
+            }
+        </button>
+
+        @if (!string.IsNullOrEmpty(pdfDataUrl))
+        {
+            <button class="btn btn-success ms-2" @onclick="DownloadPdf">
+                <i class="bi bi-download"></i> PDF Olarak İndir
+            </button>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(pdfDataUrl))
+    {
+        <div class="card shadow">
+            <div class="card-header bg-dark text-white">Rapor Önizleme</div>
+            <div class="card-body p-0">
+                <iframe src="@pdfDataUrl" style="width: 100%; height: 600px; border: none;"></iframe>
+            </div>
+        </div>
+    }
+</div>
+
+<script>
+    window.downloadFile = (fileName, base64Data) => {
+        const link = document.createElement("a");
+        link.download = fileName;
+        link.href = "data:application/pdf;base64," + base64Data;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>
+
+@code {
+    private bool isLoading = false;
+    private string pdfDataUrl = "";
+    private string pdfBase64 = "";
+
+    private async Task GenerateReportPreview()
+    {
+        isLoading = true;
+        try
+        {
+            // Verileri Çek
+            var productResult = (MyDbModel<Product>)await Provider.Execute<Product>(new MyDbModel<Product>(), "sp_Products_List", isPagination: false);
+            var categoryResult = (MyDbModel<Category>)await Provider.Execute<Category>(new MyDbModel<Category>(), "sp_Categories_List", isPagination: false);
+
+            var products = productResult.Items.ToList();
+            var categories = categoryResult.Items.ToList();
+
+            // DÜZELTME: Artık _reportService değişkenini kullanıyoruz
+            var pdfBytes = _reportService.GenerateReport(products, categories);
+
+            pdfBase64 = Convert.ToBase64String(pdfBytes);
+            pdfDataUrl = $"data:application/pdf;base64,{pdfBase64}";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task DownloadPdf()
+    {
+        if (!string.IsNullOrEmpty(pdfBase64))
+        {
+            await JS.InvokeVoidAsync("downloadFile", "KaliteKontrolRaporu.pdf", pdfBase64);
+        }
+    }
+}
